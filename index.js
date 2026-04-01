@@ -89,13 +89,8 @@ app.listen(PORT, HOST, () => {
   console.log(`  Dashboard: http://localhost:${PORT}/dashboard`);
   console.log(`  HTTP API:  http://localhost:${PORT}/`);
   console.log(`  MCP SSE:   http://localhost:${PORT}/mcp/sse`);
-  console.log(`\n  MCP config (.mcp.json):`);
-  console.log(`  {`);
-  console.log(`    "mcpServers": {`);
-  console.log(`      "ipcb": {`);
-  console.log(`        "type": "sse",`);
-  console.log(`        "url": "http://localhost:${PORT}/mcp/sse"`);
-  console.log(`      }`);
-  console.log(`    }`);
-  console.log(`  }\n`);
+  console.log(`\n  Paste this into your chatbot terminal to connect:`);
+  console.log(`  ─────────────────────────────────────────────────`);
+  console.log(`  claude mcp add --transport sse ipcb http://localhost:${PORT}/mcp/sse`);
+  console.log();
 });
