@@ -137,6 +137,7 @@ class Broker extends EventEmitter {
       if (waiters.length > 0) {
         const w = waiters.shift();
         clearTimeout(w.timer);
+        cmd.delivered = true;
         w.resolve(cmd);
         if (waiters.length === 0) this.commandWaiters.delete(peerId);
       }
@@ -154,8 +155,11 @@ class Broker extends EventEmitter {
   waitForCommand(peerId, timeoutMs = 30000) {
     // Check for any pending commands first
     const cmds = this.commands.get(peerId) || [];
-    const pending = cmds.find((c) => c.status === "pending");
-    if (pending) return Promise.resolve(pending);
+    const pending = cmds.find((c) => c.status === "pending" && !c.delivered);
+    if (pending) {
+      pending.delivered = true;
+      return Promise.resolve(pending);
+    }
 
     if (timeoutMs <= 0) return Promise.resolve(null);
 
