@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ipcb</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --cyan: #39d3f5;
+    --yellow: #e3b341;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  header h1 span { color: var(--accent); }
+  .connection-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-dim);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+  .dot.connected { background: var(--green); }
+
+  /* Layout: 3-col top, activity middle, command center bottom */
+  .container {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: minmax(140px, 1fr) minmax(160px, 1.5fr) auto;
+    gap: 1px;
+    background: var(--border);
+    height: calc(100vh - 53px);
+  }
+
+  .panel {
+    background: var(--bg);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .panel-header {
+    padding: 10px 14px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-dim); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .panel-body {
+    flex: 1; overflow-y: auto; padding: 4px 0;
+  }
+  .panel-body::-webkit-scrollbar { width: 5px; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .activity-panel { grid-column: 1 / -1; }
+  .command-panel { grid-column: 1 / -1; }
+
+  .count {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1px 7px;
+    font-size: 10px; color: var(--text-dim); font-weight: 400;
+  }
+
+  .item {
+    padding: 7px 14px; border-bottom: 1px solid var(--border);
+    cursor: default; transition: background 0.15s;
+  }
+  .item:hover { background: var(--surface); }
+  .item-name { font-size: 12px; font-weight: 500; color: var(--accent); }
+  .item-meta { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+
+  /* Peer items */
+  .peer-item { display: flex; align-items: center; gap: 8px; }
+  .peer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .peer-role { font-size: 12px; font-weight: 600; color: var(--cyan); }
+  .peer-role.orchestrator { color: var(--yellow); }
+  .peer-role.orchestrator::after { content: " *"; color: var(--yellow); }
+  .peer-id { font-size: 10px; color: var(--text-dim); }
+  .peer-caps {
+    font-size: 9px; color: var(--text-dim);
+    display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px;
+  }
+  .peer-cap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0 4px;
+  }
+
+  .signal-item .item-name { color: var(--green); }
+
+  /* Feed */
+  .feed-entry {
+    padding: 5px 14px; font-size: 11px;
+    display: flex; gap: 10px; align-items: baseline;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .feed-time { color: var(--text-dim); font-size: 9px; flex-shrink: 0; width: 72px; }
+  .feed-type {
+    font-weight: 600; font-size: 9px; text-transform: uppercase;
+    letter-spacing: 0.5px; flex-shrink: 0; width: 60px;
+    text-align: center; padding: 1px 0; border-radius: 3px;
+  }
+  .feed-type.message { color: var(--accent); background: rgba(88,166,255,0.1); }
+  .feed-type.signal { color: var(--green); background: rgba(63,185,80,0.1); }
+  .feed-type.reset { color: var(--red); background: rgba(248,81,73,0.1); }
+  .feed-type.snapshot { color: var(--purple); background: rgba(188,140,255,0.1); }
+  .feed-type.peer_join { color: var(--cyan); background: rgba(57,211,245,0.1); }
+  .feed-type.peer_leave { color: var(--red); background: rgba(248,81,73,0.1); }
+  .feed-type.command { color: var(--yellow); background: rgba(227,179,65,0.1); }
+  .feed-type.cmd_ack { color: var(--green); background: rgba(63,185,80,0.1); }
+  .feed-from {
+    color: var(--cyan); font-size: 10px; flex-shrink: 0;
+  }
+  .feed-detail { color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .feed-data { color: var(--text-dim); font-size: 10px; max-width: 350px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .empty { padding: 20px 14px; text-align: center; color: var(--text-dim); font-size: 11px; font-style: italic; }
+
+  /* Command Center */
+  .cmd-form {
+    padding: 10px 14px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .cmd-form select, .cmd-form input, .cmd-form button {
+    font-family: inherit; font-size: 11px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 5px 8px; border-radius: 4px;
+  }
+  .cmd-form select { min-width: 120px; }
+  .cmd-form input { flex: 1; min-width: 100px; }
+  .cmd-form input::placeholder { color: var(--text-dim); }
+  .cmd-form button {
+    cursor: pointer; transition: all 0.15s;
+    color: var(--text-dim);
+  }
+  .cmd-form button:hover { background: var(--border); color: var(--text); }
+  .cmd-form button.primary { background: rgba(88,166,255,0.15); border-color: var(--accent); color: var(--accent); }
+  .cmd-form button.primary:hover { background: rgba(88,166,255,0.25); }
+  .cmd-form button.danger:hover { background: rgba(248,81,73,0.15); border-color: var(--red); color: var(--red); }
+
+  .cmd-history { flex: 1; overflow-y: auto; }
+  .cmd-entry {
+    padding: 6px 14px; font-size: 11px;
+    display: flex; gap: 10px; align-items: baseline;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+  }
+  .cmd-status {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
+  }
+  .cmd-status.pending { color: var(--orange); background: rgba(210,153,34,0.1); }
+  .cmd-status.acked { color: var(--green); background: rgba(63,185,80,0.1); }
+  .cmd-target { color: var(--cyan); font-size: 10px; flex-shrink: 0; }
+  .cmd-action { color: var(--text); font-weight: 500; }
+  .cmd-result { color: var(--text-dim); font-size: 10px; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Quick actions */
+  .quick-actions {
+    padding: 6px 14px;
+    display: flex; gap: 6px; flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .quick-actions button {
+    font-family: inherit; font-size: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-dim); padding: 3px 8px; border-radius: 3px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .quick-actions button:hover { background: var(--border); color: var(--text); }
+
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; max-width: 640px; width: 90%;
+    max-height: 70vh; display: flex; flex-direction: column;
+  }
+  .modal-header {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; font-weight: 600;
+  }
+  .modal-close {
+    background: none; border: none; color: var(--text-dim);
+    cursor: pointer; font-size: 16px; line-height: 1;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { padding: 14px; overflow-y: auto; font-size: 11px; }
+  .modal-body pre {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px; overflow-x: auto;
+    white-space: pre-wrap; word-break: break-all;
+    color: var(--text); max-height: 50vh;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>IPCB</span> <span style="font-size:10px;color:var(--text-dim);font-weight:400">v2</span></h1>
+  <div class="connection-badge">
+    <div class="dot" id="connDot"></div>
+    <span id="connText">connecting...</span>
+  </div>
+</header>
+
+<div class="container">
+  <!-- Peers panel -->
+  <div class="panel">
+    <div class="panel-header">
+      Peers <span class="count" id="peerCount">0</span>
+    </div>
+    <div class="panel-body" id="peerList">
+      <div class="empty">No peers registered</div>
+    </div>
+  </div>
+
+  <!-- Channels panel -->
+  <div class="panel">
+    <div class="panel-header">
+      Channels <span class="count" id="channelCount">0</span>
+    </div>
+    <div class="panel-body" id="channelList">
+      <div class="empty">No channels yet</div>
+    </div>
+  </div>
+
+  <!-- Signals panel -->
+  <div class="panel">
+    <div class="panel-header">
+      Signals <span class="count" id="signalCount">0</span>
+    </div>
+    <div class="panel-body" id="signalList">
+      <div class="empty">No signals yet</div>
+    </div>
+  </div>
+
+  <!-- Activity feed -->
+  <div class="panel activity-panel">
+    <div class="panel-header">
+      Live Activity <span class="count" id="activityCount">0</span>
+    </div>
+    <div class="panel-body" id="activityFeed">
+      <div class="empty">Waiting for activity...</div>
+    </div>
+  </div>
+
+  <!-- Command Center -->
+  <div class="panel command-panel">
+    <div class="panel-header">
+      Command Center <span class="count" id="cmdCount">0</span>
+    </div>
+    <div class="cmd-form">
+      <select id="cmdTarget"><option value="">target...</option></select>
+      <input id="cmdAction" placeholder="action (e.g. start_server)" />
+      <input id="cmdParams" placeholder='params JSON (optional)' />
+      <button class="primary" onclick="sendCommand()">Send</button>
+      <button class="danger" onclick="resetBroker()">Reset All</button>
+    </div>
+    <div class="quick-actions" id="quickActions">
+      <button onclick="quickCmd('start')">start</button>
+      <button onclick="quickCmd('stop')">stop</button>
+      <button onclick="quickCmd('run_test')">run_test</button>
+      <button onclick="quickCmd('report_status')">report_status</button>
+    </div>
+    <div class="cmd-history panel-body" id="cmdHistory">
+      <div class="empty">No commands sent yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modalTitle">Detail</span>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <pre id="modalContent"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const MAX_FEED = 200;
+let activityCount = 0;
+let evtSource = null;
+let knownPeers = [];
+let allCommands = [];
+
+// ── SSE Connection ──
+function connectSSE() {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/events');
+  evtSource.onopen = () => {
+    document.getElementById('connDot').classList.add('connected');
+    document.getElementById('connText').textContent = 'live';
+  };
+  evtSource.onmessage = (e) => handleEvent(JSON.parse(e.data));
+  evtSource.onerror = () => {
+    document.getElementById('connDot').classList.remove('connected');
+    document.getElementById('connText').textContent = 'reconnecting...';
+  };
+}
+
+function handleEvent(event) {
+  if (event.type === 'snapshot') {
+    renderPeers(event.peers || []);
+    renderChannels(event.channels);
+    renderSignals(event.signals);
+    addFeedEntry({ type: 'snapshot', detail: 'Connected - state loaded' });
+    refreshCommands();
+    return;
+  }
+  if (event.type === 'peer_join') {
+    addFeedEntry({ type: 'peer_join', detail: `${event.peer.role} (${event.peer.id}) joined` });
+    refreshState();
+  }
+  if (event.type === 'peer_leave') {
+    addFeedEntry({ type: 'peer_leave', detail: `${event.peer.role} (${event.peer.id}) left` });
+    refreshState();
+  }
+  if (event.type === 'message') {
+    const from = event.entry.from ? `[${event.entry.from.role}] ` : '';
+    addFeedEntry({
+      type: 'message', from: event.entry.from?.role,
+      detail: `${from}#${event.channel}`,
+      data: truncate(JSON.stringify(event.entry.data), 80),
+    });
+    refreshState();
+  }
+  if (event.type === 'signal') {
+    const from = event.entry.from ? `[${event.entry.from.role}] ` : '';
+    const woke = event.woke > 0 ? ` (woke ${event.woke})` : '';
+    addFeedEntry({
+      type: 'signal', from: event.entry.from?.role,
+      detail: `${from}${event.name}${woke}`,
+      data: event.entry.data ? truncate(JSON.stringify(event.entry.data), 80) : null,
+    });
+    refreshState();
+  }
+  if (event.type === 'command_sent') {
+    for (const cmd of event.commands) {
+      addFeedEntry({
+        type: 'command',
+        detail: `${cmd.from} -> ${cmd.targetRole}: ${cmd.action}`,
+        data: cmd.params ? truncate(JSON.stringify(cmd.params), 80) : null,
+      });
+    }
+    refreshCommands();
+  }
+  if (event.type === 'command_ack') {
+    const cmd = event.command;
+    addFeedEntry({
+      type: 'cmd_ack',
+      detail: `${cmd.targetRole} acked: ${cmd.action}`,
+      data: cmd.result ? truncate(JSON.stringify(cmd.result), 80) : null,
+    });
+    refreshCommands();
+  }
+  if (event.type === 'reset') {
+    addFeedEntry({ type: 'reset', detail: 'Broker reset - all state cleared' });
+    renderPeers([]);
+    renderChannels({});
+    renderSignals({});
+    renderCommands([]);
+  }
+}
+
+// ── Rendering ──
+function renderPeers(peers) {
+  knownPeers = peers;
+  const el = document.getElementById('peerList');
+  document.getElementById('peerCount').textContent = peers.length;
+  updateTargetDropdown();
+
+  if (peers.length === 0) {
+    el.innerHTML = '<div class="empty">No peers registered</div>';
+    return;
+  }
+  el.innerHTML = peers.map(p => {
+    const isOrch = p.role === 'orchestrator';
+    const caps = p.capabilities.length
+      ? `<div class="peer-caps">${p.capabilities.map(c => `<span class="peer-cap">${esc(c)}</span>`).join('')}</div>`
+      : '';
+    return `<div class="item" onclick="showPeerDetail('${p.id}')">
+      <div class="peer-item">
+        <div class="peer-dot"></div>
+        <span class="peer-role${isOrch ? ' orchestrator' : ''}">${esc(p.role)}</span>
+        <span class="peer-id">${esc(p.id)}</span>
+      </div>
+      ${caps}
+    </div>`;
+  }).join('');
+}
+
+function renderChannels(channels) {
+  const el = document.getElementById('channelList');
+  const keys = Object.keys(channels);
+  document.getElementById('channelCount').textContent = keys.length;
+  if (keys.length === 0) { el.innerHTML = '<div class="empty">No channels yet</div>'; return; }
+  el.innerHTML = keys.map(name => {
+    const ch = channels[name];
+    return `<div class="item" onclick="showChannelMessages('${name}')">
+      <div class="item-name">#${esc(name)}</div>
+      <div class="item-meta">${ch.count} msg${ch.count !== 1 ? 's' : ''} &middot; last ID: ${ch.lastId}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderSignals(signals) {
+  const el = document.getElementById('signalList');
+  const keys = Object.keys(signals);
+  document.getElementById('signalCount').textContent = keys.length;
+  if (keys.length === 0) { el.innerHTML = '<div class="empty">No signals yet</div>'; return; }
+  el.innerHTML = keys.map(name => {
+    const sig = signals[name];
+    const time = new Date(sig.ts).toLocaleTimeString();
+    const from = sig.from ? `[${sig.from.role}] ` : '';
+    const data = sig.data ? truncate(JSON.stringify(sig.data), 50) : 'null';
+    return `<div class="item signal-item" onclick="showSignalDetail('${name}')">
+      <div class="item-name">${from}${esc(name)}</div>
+      <div class="item-meta">${time} &middot; ${esc(data)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderCommands(commands) {
+  allCommands = commands;
+  const el = document.getElementById('cmdHistory');
+  document.getElementById('cmdCount').textContent = commands.length;
+  if (commands.length === 0) { el.innerHTML = '<div class="empty">No commands sent yet</div>'; return; }
+  el.innerHTML = commands.map(cmd => {
+    const result = cmd.result ? truncate(JSON.stringify(cmd.result), 60) : '';
+    return `<div class="cmd-entry" onclick="showCommandDetail(${cmd.id})">
+      <span class="cmd-status ${cmd.status}">${cmd.status}</span>
+      <span class="cmd-target">${esc(cmd.from)} -> ${esc(cmd.targetRole)}</span>
+      <span class="cmd-action">${esc(cmd.action)}</span>
+      ${result ? `<span class="cmd-result">${esc(result)}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function addFeedEntry({ type, from, detail, data }) {
+  activityCount++;
+  document.getElementById('activityCount').textContent = activityCount;
+  const feed = document.getElementById('activityFeed');
+  const empty = feed.querySelector('.empty');
+  if (empty) empty.remove();
+
+  const time = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  div.className = 'feed-entry';
+
+  // Map event types to display labels
+  const typeLabel = {
+    peer_join: 'join', peer_leave: 'leave',
+    command_sent: 'command', command: 'command',
+    cmd_ack: 'cmd_ack',
+  }[type] || type;
+
+  div.innerHTML = `
+    <span class="feed-time">${time}</span>
+    <span class="feed-type ${type}">${typeLabel}</span>
+    <span class="feed-detail">${esc(detail)}</span>
+    ${data ? `<span class="feed-data">${esc(data)}</span>` : ''}
+  `;
+  feed.insertBefore(div, feed.firstChild);
+  while (feed.children.length > MAX_FEED) feed.removeChild(feed.lastChild);
+}
+
+function updateTargetDropdown() {
+  const sel = document.getElementById('cmdTarget');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">target...</option><option value="all">all peers</option>';
+  const roles = new Set();
+  for (const p of knownPeers) {
+    if (!roles.has(p.role)) {
+      roles.add(p.role);
+      sel.innerHTML += `<option value="${esc(p.role)}">${esc(p.role)}</option>`;
+    }
+  }
+  if (current) sel.value = current;
+}
+
+// ── Actions ──
+async function refreshState() {
+  try {
+    const res = await fetch('/status');
+    const data = await res.json();
+    renderPeers(data.peers || []);
+    renderChannels(data.channels);
+    renderSignals(data.signals);
+  } catch {}
+}
+
+async function refreshCommands() {
+  try {
+    const res = await fetch('/commands');
+    const data = await res.json();
+    renderCommands(data.commands || []);
+  } catch {}
+}
+
+async function sendCommand() {
+  const target = document.getElementById('cmdTarget').value;
+  const action = document.getElementById('cmdAction').value.trim();
+  const paramsStr = document.getElementById('cmdParams').value.trim();
+
+  if (!target || !action) return;
+
+  let params = null;
+  if (paramsStr) {
+    try { params = JSON.parse(paramsStr); } catch { params = paramsStr; }
+  }
+
+  // If "all", send to each role
+  if (target === 'all') {
+    const roles = new Set(knownPeers.map(p => p.role));
+    for (const role of roles) {
+      await fetch('/commands/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: 'human', target: role, action, params }),
+      });
+    }
+  } else {
+    await fetch('/commands/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'human', target, action, params }),
+    });
+  }
+
+  document.getElementById('cmdAction').value = '';
+  document.getElementById('cmdParams').value = '';
+}
+
+function quickCmd(action) {
+  document.getElementById('cmdAction').value = action;
+  const target = document.getElementById('cmdTarget').value;
+  if (target) sendCommand();
+}
+
+async function resetBroker() {
+  await fetch('/reset', { method: 'POST' });
+}
+
+async function showChannelMessages(channel) {
+  const res = await fetch(`/channels/${channel}/messages`);
+  const data = await res.json();
+  showModal(`#${channel} messages`, data.messages);
+}
+
+async function showSignalDetail(name) {
+  const res = await fetch(`/signals/${name}`);
+  const data = await res.json();
+  showModal(`Signal: ${name}`, data);
+}
+
+async function showPeerDetail(id) {
+  const peer = knownPeers.find(p => p.id === id);
+  const cmdsRes = await fetch(`/commands/${id}`);
+  const cmdsData = await cmdsRes.json();
+  showModal(`Peer: ${peer?.role || id}`, { peer, commands: cmdsData.commands });
+}
+
+function showCommandDetail(cmdId) {
+  const cmd = allCommands.find(c => c.id === cmdId);
+  if (cmd) showModal(`Command #${cmdId}`, cmd);
+}
+
+function showModal(title, data) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalContent').textContent = JSON.stringify(data, null, 2);
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+// Submit command on Enter
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Enter' && (e.target.id === 'cmdAction' || e.target.id === 'cmdParams')) sendCommand();
+});
+
+// ── Helpers ──
+function truncate(str, len) { return str.length > len ? str.slice(0, len) + '...' : str; }
+function esc(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Start
+connectSSE();
+</script>
+</body>
+</html>

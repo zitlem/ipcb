@@ -1,0 +1,31 @@
+{
+  "name": "ipcb",
+  "version": "2.0.0",
+  "description": "IPC message broker with HTTP API, MCP server, and real-time web dashboard.",
+  "main": "index.js",
+  "bin": {
+    "ipcb": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "broker.js",
+    "http-api.js",
+    "mcp-server.js",
+    "dashboard.html"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zitlem/ipcb.git"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": ["mcp", "ipc", "broker", "message-broker", "coordination", "multi-terminal"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1"
+  }
+}
