@@ -102,8 +102,12 @@ app.listen(PORT, HOST, () => {
   console.log(`  Dashboard: http://${ip}:${PORT}/dashboard`);
   console.log(`  HTTP API:  http://${ip}:${PORT}/`);
   console.log(`  MCP SSE:   http://${ip}:${PORT}/mcp/sse`);
-  console.log(`\n  Paste this into your chatbot terminal to connect:`);
-  console.log(`  ─────────────────────────────────────────────────`);
-  console.log(`  claude mcp add --transport sse ipcb http://${ip}:${PORT}/mcp/sse`);
+  const url = `http://${ip}:${PORT}/mcp/sse`;
+  console.log(`\n  Add MCP server (paste into your terminal):`);
+  console.log(`  ────────────────────────────────────────────`);
+  console.log(`  Claude Code:  claude mcp add --transport sse ipcb ${url}`);
+  console.log(`  Cursor:       Add SSE server in Settings → MCP → url: ${url}`);
+  console.log(`  Windsurf:     Add SSE server in Settings → MCP → url: ${url}`);
+  console.log(`  .mcp.json:    { "mcpServers": { "ipcb": { "type": "sse", "url": "${url}" } } }`);
   console.log();
 });
