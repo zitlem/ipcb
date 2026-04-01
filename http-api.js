@@ -7,7 +7,11 @@ const path = require("path");
 
 function createHttpApi(broker) {
   const app = express();
-  app.use(express.json());
+  app.use((req, res, next) => {
+    // Skip body parsing for MCP messages — SSEServerTransport reads the raw stream
+    if (req.path === "/mcp/messages") return next();
+    express.json()(req, res, next);
+  });
 
   // ── Dashboard ──
   app.get("/dashboard", (_req, res) => {
