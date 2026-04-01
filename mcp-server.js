@@ -11,7 +11,25 @@ const { z } = require("zod");
  * Register all broker tools on an MCP server instance.
  * Called once per SSE connection so each gets its own McpServer.
  */
-function registerTools(mcp, broker, sessionPeers, baseUrl) {
+function registerTools(mcp, broker, sessionPeers, baseUrl, transports) {
+
+  // Helper: resolve caller's peer ID from session
+  function getCallerPeerId(extra) {
+    const sid = extra?.sessionId || extra?._meta?.sessionId;
+    if (sid && sessionPeers.has(sid)) return sessionPeers.get(sid);
+    // Fallback: find orphaned peers (mapped to dead sessions) and adopt
+    if (sid) {
+      for (const [oldSid, pid] of sessionPeers.entries()) {
+        if (!transports.has(oldSid) && broker.getPeer(pid)) {
+          // Orphaned peer — adopt into current session
+          sessionPeers.delete(oldSid);
+          sessionPeers.set(sid, pid);
+          return pid;
+        }
+      }
+    }
+    return null;
+  }
 
   // ── Tool: connect ──
   mcp.tool(
@@ -120,7 +138,6 @@ This two-step flow means the user just says "connect to the broker" and you hand
           peer = broker.registerPeer(role, capabilities);
           if (sid) sessionPeers.set(sid, peer.id);
         }
-
         const peers = broker.listPeers();
         let msg = `Connected as '${peer.role}' (${peer.id})\n`;
         msg += `Capabilities: [${peer.capabilities.join(", ")}]\n\n`;
@@ -180,8 +197,7 @@ This two-step flow means the user just says "connect to the broker" and you hand
     "Get your peer ID, role, and connection status.",
     {},
     async (_args, extra) => {
-      const sid = extra?.sessionId || extra?._meta?.sessionId;
-      const peerId = sid ? sessionPeers.get(sid) : null;
+      const peerId = getCallerPeerId(extra);
       if (!peerId) {
         return { content: [{ type: "text", text: "Not connected. Call connect() first." }] };
       }
@@ -259,8 +275,7 @@ This two-step flow means the user just says "connect to the broker" and you hand
         .describe("Optional JSON params for the command"),
     },
     async ({ target, action, params }, extra) => {
-      const sid = extra?.sessionId || extra?._meta?.sessionId;
-      const fromId = (sid ? sessionPeers.get(sid) : null) || "unknown";
+      const fromId = getCallerPeerId(extra) || "unknown";
 
       let parsedParams = null;
       if (params) {
@@ -289,8 +304,7 @@ This two-step flow means the user just says "connect to the broker" and you hand
     "DO NOT USE THIS TOOL — it wastes tokens. Use the background curl method instead.",
     {},
     async (_args, extra) => {
-      const sid = extra?.sessionId || extra?._meta?.sessionId;
-      const peerId = sid ? sessionPeers.get(sid) : null;
+      const peerId = getCallerPeerId(extra);
       const id = peerId || "<YOUR_PEER_ID>";
       return {
         content: [{
@@ -339,8 +353,7 @@ This two-step flow means the user just says "connect to the broker" and you hand
       message: z.string().describe("Message content (text or JSON string)"),
     },
     async ({ channel, message }, extra) => {
-      const sid = extra?.sessionId || extra?._meta?.sessionId;
-      const fromId = sid ? sessionPeers.get(sid) : null;
+      const fromId = getCallerPeerId(extra);
 
       let data;
       try { data = JSON.parse(message); } catch { data = message; }
@@ -376,8 +389,7 @@ This two-step flow means the user just says "connect to the broker" and you hand
       data: z.string().optional().describe("Optional data (text or JSON string)"),
     },
     async ({ name, data }, extra) => {
-      const sid = extra?.sessionId || extra?._meta?.sessionId;
-      const fromId = sid ? sessionPeers.get(sid) : null;
+      const fromId = getCallerPeerId(extra);
 
       let parsed = null;
       if (data) {
@@ -450,14 +462,14 @@ function mountMcp(app, broker, baseUrl) {
 
   app.get("/mcp/sse", async (req, res) => {
     const mcp = new McpServer({ name: "ipcb", version: "2.0.0" });
-    registerTools(mcp, broker, sessionPeers, baseUrl);
+    registerTools(mcp, broker, sessionPeers, baseUrl, transports);
 
     const transport = new SSEServerTransport("/mcp/messages", res);
     transports.set(transport.sessionId, transport);
     mcpServers.set(transport.sessionId, mcp);
 
     res.on("close", () => {
-      sessionPeers.delete(transport.sessionId);
+      // Don't delete sessionPeers — peer stays alive for reconnect adoption
       transports.delete(transport.sessionId);
       mcpServers.delete(transport.sessionId);
     });
