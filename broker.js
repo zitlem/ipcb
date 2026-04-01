@@ -86,8 +86,12 @@ class Broker extends EventEmitter {
     return this.peers.get(id) || null;
   }
 
-  /** Find all peers matching a target (peer ID or role name) */
-  _resolvePeerTargets(target) {
+  /** Find all peers matching a target (peer ID, role name, or "*"/"all" for broadcast) */
+  _resolvePeerTargets(target, excludeId) {
+    // Broadcast to all peers
+    if (target === "*" || target === "all") {
+      return [...this.peers.keys()].filter((id) => id !== excludeId);
+    }
     // Direct peer ID match
     if (this.peers.has(target)) return [target];
     // Match by role
@@ -101,7 +105,7 @@ class Broker extends EventEmitter {
   // ── Commands ──
 
   sendCommand(fromId, target, action, params = null) {
-    const targets = this._resolvePeerTargets(target);
+    const targets = this._resolvePeerTargets(target, fromId);
     if (targets.length === 0) {
       throw new Error(`No peer found matching target: ${target}`);
     }

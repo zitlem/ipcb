@@ -114,15 +114,14 @@ This two-step flow means the user just says "connect to the broker" and you hand
           msg += `  ${isMe ? "→" : " "} ${p.role} (${p.id})${isMe ? " ← YOU" : ""}\n`;
         }
 
-        msg += "\n── LISTEN FOR EVENTS (zero tokens) ──";
-        msg += "\nRun this in bash to watch for commands, signals, and messages without burning tokens:";
-        msg += `\n\n  curl -sN "${baseUrl}/events"`;
-        msg += `\n\nYour peer ID is: ${peer.id}`;
-        msg += `\nYour role is: ${peer.role}`;
-        msg += "\n\nWhen you see an event with your peer ID or role as the target, act on it.";
-        msg += "\nIgnore events meant for other peers.";
-        msg += "\nAfter executing a command, call ack_command() with the result.";
-        msg += "\nYou can also send commands, messages, and signals to other peers using the MCP tools.";
+        msg += "\n── HOW TO LISTEN (IMPORTANT — zero token usage) ──";
+        msg += "\nDO NOT use wait_for_command — it burns tokens while waiting.";
+        msg += "\nInstead, run this curl command IN THE BACKGROUND using your Bash tool with run_in_background=true:";
+        msg += `\n\n  curl -s "${baseUrl}/commands/${peer.id}/wait?timeout=300000"`;
+        msg += "\n\nThis uses ZERO tokens while waiting. You will be notified when a command arrives.";
+        msg += "\nWhen notified, read the output, execute the command, call ack_command() with the result,";
+        msg += "\nthen start the background curl again to wait for the next command.";
+        msg += "\nYou can also send commands to other peers using send_command().";
 
         return { content: [{ type: "text", text: msg }] };
       } catch (err) {
@@ -173,9 +172,9 @@ This two-step flow means the user just says "connect to the broker" and you hand
   // ── Tool: send_command ──
   mcp.tool(
     "send_command",
-    "Send a command to another peer by role name or peer ID. The target will receive it when they call wait_for_command(). Use this to coordinate work between sessions.",
+    "Send a command to a peer by role name, peer ID, or '*'/'all' to broadcast to every peer. The target receives it via their background curl listener.",
     {
-      target: z.string().describe("Target peer role (e.g. 'linux-client') or peer ID"),
+      target: z.string().describe("Target peer role (e.g. 'linux-client'), peer ID, or '*'/'all' to broadcast to everyone"),
       action: z.string().describe("Command action (e.g. 'start_server', 'run_test', 'connect_and_handshake')"),
       params: z
         .string()
@@ -210,41 +209,22 @@ This two-step flow means the user just says "connect to the broker" and you hand
   // ── Tool: wait_for_command ──
   mcp.tool(
     "wait_for_command",
-    `Wait for a command. NOTE: This tool burns tokens while waiting!
-
-PREFERRED: Use bash curl instead for zero-token waiting:
-  curl -sN "${baseUrl}/commands/<YOUR_PEER_ID>/wait?timeout=300000"
-Call my_info() to get your peer ID. Only use this MCP tool for short waits.`,
-    {
-      timeout_seconds: z
-        .number()
-        .optional()
-        .default(60)
-        .describe("Max seconds to wait (default 60)"),
-    },
-    async ({ timeout_seconds }, extra) => {
+    "DO NOT USE THIS TOOL — it wastes tokens. Use the background curl method instead.",
+    {},
+    async (_args, extra) => {
       const sid = extra?.sessionId || extra?._meta?.sessionId;
       const peerId = sid ? sessionPeers.get(sid) : null;
-      if (!peerId) {
-        return { content: [{ type: "text", text: `Not registered. Call connect() first.` }] };
-      }
-
-      const cmd = await broker.waitForCommand(peerId, timeout_seconds * 1000);
-      if (cmd) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                { received: true, command_id: cmd.id, from: cmd.from, action: cmd.action, params: cmd.params },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      }
-      return { content: [{ type: "text", text: JSON.stringify({ received: false, error: "timeout" }) }] };
+      const id = peerId || "<YOUR_PEER_ID>";
+      return {
+        content: [{
+          type: "text",
+          text: `STOP — Do not use this tool. It burns tokens while waiting.\n\n` +
+            `Instead, run this in Bash with run_in_background=true:\n\n` +
+            `  curl -s "${baseUrl}/commands/${id}/wait?timeout=300000"\n\n` +
+            `This uses ZERO tokens while waiting. You'll be notified when a command arrives.\n` +
+            `Then read the output, execute the command, ack_command() the result, and start the curl again.`,
+        }],
+      };
     }
   );
 
