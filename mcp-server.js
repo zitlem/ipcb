@@ -114,6 +114,26 @@ This two-step flow means the user just says "connect to the broker" and you hand
           msg += `  ${isMe ? "→" : " "} ${p.role} (${p.id})${isMe ? " ← YOU" : ""}\n`;
         }
 
+        // Show recent activity for late joiners
+        const recentActivity = broker.read("activity", 0);
+        if (recentActivity.length > 0) {
+          msg += `\n── RECENT ACTIVITY (${recentActivity.length} events) ──\n`;
+          for (const entry of recentActivity.slice(-10)) {
+            const d = entry.data;
+            if (d.event === "peer_joined") {
+              msg += `  [join] ${d.role} connected\n`;
+            } else if (d.event === "command_completed") {
+              msg += `  [done] ${d.by} completed '${d.action}' for ${d.for}: ${typeof d.result === "string" ? d.result.slice(0, 80) : JSON.stringify(d.result).slice(0, 80)}\n`;
+            } else if (d.event === "error") {
+              msg += `  [error] ${d.from || "unknown"}: ${(d.message || "").slice(0, 80)}\n`;
+            } else if (d.event === "finding") {
+              msg += `  [finding] ${d.from || "unknown"}: ${(d.message || "").slice(0, 80)}\n`;
+            } else {
+              msg += `  [${d.event || "msg"}] ${JSON.stringify(d).slice(0, 80)}\n`;
+            }
+          }
+        }
+
         msg += "\n── HOW TO LISTEN (IMPORTANT — zero token usage) ──";
         msg += "\nDO NOT use wait_for_command — it burns tokens while waiting.";
         msg += "\nInstead, run this curl command IN THE BACKGROUND using your Bash tool with run_in_background=true:";
@@ -121,7 +141,15 @@ This two-step flow means the user just says "connect to the broker" and you hand
         msg += "\n\nThis uses ZERO tokens while waiting. You will be notified when a command arrives.";
         msg += "\nWhen notified, read the output, execute the command, call ack_command() with the result,";
         msg += "\nthen start the background curl again to wait for the next command.";
-        msg += "\nYou can also send commands to other peers using send_command().";
+
+        msg += "\n\n── HOW TO COLLABORATE ──";
+        msg += "\n• Send commands DIRECTLY to any peer by role name — no need to go through orchestrator";
+        msg += "\n• When you hit an error, post it to the shared channel so everyone sees it:";
+        msg += `\n    curl -s -X POST "${baseUrl}/channels/activity/send?from=${peer.id}" -H 'Content-Type: application/json' -d '{"event":"error","message":"<describe the error>"}'`;
+        msg += "\n• When you discover something useful, share it the same way with event: 'finding'";
+        msg += "\n• To see what others have found:";
+        msg += `\n    curl -s "${baseUrl}/channels/activity/messages"`;
+        msg += "\n• To send a fix or code snippet to a specific peer, use send_command() with the code in params";
 
         return { content: [{ type: "text", text: msg }] };
       } catch (err) {
