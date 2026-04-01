@@ -102,8 +102,24 @@ This two-step flow means the user just says "connect to the broker" and you hand
 
       // Registration mode — role provided, register the peer
       try {
-        const peer = broker.registerPeer(role, capabilities);
-        if (sid) sessionPeers.set(sid, peer.id);
+        // Check if this role already exists (reconnect scenario)
+        const existingByRole = broker.listPeers().find((p) => p.role === role);
+        let peer;
+        if (existingByRole) {
+          // Adopt the existing peer into this new session
+          // Remove old session mapping if any
+          for (const [oldSid, pid] of sessionPeers.entries()) {
+            if (pid === existingByRole.id) { sessionPeers.delete(oldSid); break; }
+          }
+          if (sid) sessionPeers.set(sid, existingByRole.id);
+          if (capabilities && capabilities.length > 0) {
+            broker.setRole(existingByRole.id, role, capabilities);
+          }
+          peer = existingByRole;
+        } else {
+          peer = broker.registerPeer(role, capabilities);
+          if (sid) sessionPeers.set(sid, peer.id);
+        }
 
         const peers = broker.listPeers();
         let msg = `Connected as '${peer.role}' (${peer.id})\n`;
