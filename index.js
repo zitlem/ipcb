@@ -11,7 +11,7 @@
  */
 const { Broker } = require("./broker");
 const { createHttpApi } = require("./http-api");
-const { createMcpServer, mountMcpOnExpress } = require("./mcp-server");
+const { mountMcp } = require("./mcp-server");
 
 // Parse CLI args
 const args = process.argv.slice(2);
@@ -23,14 +23,25 @@ function getArg(name, fallback) {
 const PORT = parseInt(getArg("--port", "9100"), 10);
 const HOST = getArg("--host", "0.0.0.0");
 
+// Get the machine's LAN IP for the paste-ready command
+function getLanIp() {
+  const nets = require("os").networkInterfaces();
+  for (const iface of Object.values(nets)) {
+    for (const cfg of iface) {
+      if (cfg.family === "IPv4" && !cfg.internal) return cfg.address;
+    }
+  }
+  return "localhost";
+}
+
 // Build everything
 const broker = new Broker();
 const app = createHttpApi(broker);
-const mcpResult = createMcpServer(broker);
-const transports = mountMcpOnExpress(app, mcpResult);
+const transports = mountMcp(app, broker);
 
 // Landing page
 app.get("/", (_req, res) => {
+  const ip = getLanIp();
   res.json({
     name: "ipcb",
     version: "2.0.0",
@@ -75,27 +86,27 @@ app.get("/", (_req, res) => {
         mcpServers: {
           "ipcb": {
             type: "sse",
-            url: `http://localhost:${PORT}/mcp/sse`,
+            url: `http://${ip}:${PORT}/mcp/sse`,
           },
         },
       },
-      curl_example: `curl -X POST http://localhost:${PORT}/channels/test/send -H 'Content-Type: application/json' -d '{"hello":"world"}'`,
+      curl_example: `curl -X POST http://${ip}:${PORT}/channels/test/send -H 'Content-Type: application/json' -d '{"hello":"world"}'`,
     },
   });
 });
 
 app.listen(PORT, HOST, () => {
+  const ip = getLanIp();
+  const url = `http://${ip}:${PORT}/mcp/sse`;
   console.log(`\n  ipcb running on http://${HOST}:${PORT}\n`);
-  console.log(`  Dashboard: http://localhost:${PORT}/dashboard`);
-  console.log(`  HTTP API:  http://localhost:${PORT}/`);
-  console.log(`  MCP SSE:   http://localhost:${PORT}/mcp/sse`);
-  console.log(`\n  MCP config (.mcp.json):`);
-  console.log(`  {`);
-  console.log(`    "mcpServers": {`);
-  console.log(`      "ipcb": {`);
-  console.log(`        "type": "sse",`);
-  console.log(`        "url": "http://localhost:${PORT}/mcp/sse"`);
-  console.log(`      }`);
-  console.log(`    }`);
-  console.log(`  }\n`);
+  console.log(`  Dashboard: http://${ip}:${PORT}/dashboard`);
+  console.log(`  HTTP API:  http://${ip}:${PORT}/`);
+  console.log(`  MCP SSE:   ${url}`);
+  console.log(`\n  Add MCP server (paste into your terminal):`);
+  console.log(`  ────────────────────────────────────────────`);
+  console.log(`  Claude Code:  claude mcp add --transport sse ipcb ${url}`);
+  console.log(`  Cursor:       Add SSE server in Settings → MCP → url: ${url}`);
+  console.log(`  Windsurf:     Add SSE server in Settings → MCP → url: ${url}`);
+  console.log(`  .mcp.json:    { "mcpServers": { "ipcb": { "type": "sse", "url": "${url}" } } }`);
+  console.log();
 });

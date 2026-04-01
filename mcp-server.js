@@ -8,17 +8,10 @@ const { SSEServerTransport } = require("@modelcontextprotocol/sdk/server/sse.js"
 const { z } = require("zod");
 
 /**
- * Create an MCP server instance bound to a broker.
- * We use a sessionPeers map to track which MCP session belongs to which peer.
+ * Register all broker tools on an MCP server instance.
+ * Called once per SSE connection so each gets its own McpServer.
  */
-function createMcpServer(broker) {
-  const mcp = new McpServer({
-    name: "ipcb",
-    version: "2.0.0",
-  });
-
-  // Map MCP sessionId -> peerId (set during connect, used by other tools)
-  const sessionPeers = new Map();
+function registerTools(mcp, broker, sessionPeers) {
 
   // ── Tool: connect ──
   mcp.tool(
@@ -380,28 +373,30 @@ This two-step flow means the user just says "connect to the broker" and you hand
     }
   );
 
-  return { mcp, sessionPeers };
 }
 
 /**
  * Mount SSE MCP transport onto an Express app.
+ * Creates a fresh McpServer per SSE connection to support multiple clients.
  */
-function mountMcpOnExpress(app, mcpResult) {
-  const { mcp, sessionPeers } = mcpResult;
+function mountMcp(app, broker) {
   const transports = new Map();
+  const mcpServers = new Map();
+  // Shared across all connections so peers persist
+  const sessionPeers = new Map();
 
   app.get("/mcp/sse", async (req, res) => {
+    const mcp = new McpServer({ name: "ipcb", version: "2.0.0" });
+    registerTools(mcp, broker, sessionPeers);
+
     const transport = new SSEServerTransport("/mcp/messages", res);
     transports.set(transport.sessionId, transport);
+    mcpServers.set(transport.sessionId, mcp);
+
     res.on("close", () => {
-      // Auto-unregister peer when MCP connection drops
-      const peerId = sessionPeers.get(transport.sessionId);
-      if (peerId) {
-        const { Broker } = require("./broker");
-        // Access broker through closure — it's available via the mcp tools
-        sessionPeers.delete(transport.sessionId);
-      }
+      sessionPeers.delete(transport.sessionId);
       transports.delete(transport.sessionId);
+      mcpServers.delete(transport.sessionId);
     });
     await mcp.connect(transport);
   });
@@ -419,4 +414,4 @@ function mountMcpOnExpress(app, mcpResult) {
   return transports;
 }
 
-module.exports = { createMcpServer, mountMcpOnExpress };
+module.exports = { mountMcp };
