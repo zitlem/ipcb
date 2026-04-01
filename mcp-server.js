@@ -11,7 +11,7 @@ const { z } = require("zod");
  * Register all broker tools on an MCP server instance.
  * Called once per SSE connection so each gets its own McpServer.
  */
-function registerTools(mcp, broker, sessionPeers) {
+function registerTools(mcp, broker, sessionPeers, baseUrl) {
 
   // ── Tool: connect ──
   mcp.tool(
@@ -114,13 +114,15 @@ This two-step flow means the user just says "connect to the broker" and you hand
           msg += `  ${isMe ? "→" : " "} ${p.role} (${p.id})${isMe ? " ← YOU" : ""}\n`;
         }
 
-        if (role === "orchestrator") {
-          msg += "\nYou are the ORCHESTRATOR. You can send commands to other peers using send_command().";
-          msg += "\nThe human can also send commands from the web dashboard.";
-        } else {
-          msg += "\nYou are a WORKER. Call wait_for_command() to listen for orders from the orchestrator or dashboard.";
-          msg += "\nYou can also send messages to channels and emit signals.";
-        }
+        msg += "\n── LISTEN FOR EVENTS (zero tokens) ──";
+        msg += "\nRun this in bash to watch for commands, signals, and messages without burning tokens:";
+        msg += `\n\n  curl -sN "${baseUrl}/events"`;
+        msg += `\n\nYour peer ID is: ${peer.id}`;
+        msg += `\nYour role is: ${peer.role}`;
+        msg += "\n\nWhen you see an event with your peer ID or role as the target, act on it.";
+        msg += "\nIgnore events meant for other peers.";
+        msg += "\nAfter executing a command, call ack_command() with the result.";
+        msg += "\nYou can also send commands, messages, and signals to other peers using the MCP tools.";
 
         return { content: [{ type: "text", text: msg }] };
       } catch (err) {
@@ -208,7 +210,11 @@ This two-step flow means the user just says "connect to the broker" and you hand
   // ── Tool: wait_for_command ──
   mcp.tool(
     "wait_for_command",
-    "Wait for a command from an orchestrator or the human dashboard. Blocks until a command arrives or timeout. Returns the command with action and params to execute.",
+    `Wait for a command. NOTE: This tool burns tokens while waiting!
+
+PREFERRED: Use bash curl instead for zero-token waiting:
+  curl -sN "${baseUrl}/commands/<YOUR_PEER_ID>/wait?timeout=300000"
+Call my_info() to get your peer ID. Only use this MCP tool for short waits.`,
     {
       timeout_seconds: z
         .number()
@@ -220,7 +226,7 @@ This two-step flow means the user just says "connect to the broker" and you hand
       const sid = extra?.sessionId || extra?._meta?.sessionId;
       const peerId = sid ? sessionPeers.get(sid) : null;
       if (!peerId) {
-        return { content: [{ type: "text", text: "Not registered. Call register() first." }] };
+        return { content: [{ type: "text", text: `Not registered. Call connect() first.` }] };
       }
 
       const cmd = await broker.waitForCommand(peerId, timeout_seconds * 1000);
@@ -379,7 +385,7 @@ This two-step flow means the user just says "connect to the broker" and you hand
  * Mount SSE MCP transport onto an Express app.
  * Creates a fresh McpServer per SSE connection to support multiple clients.
  */
-function mountMcp(app, broker) {
+function mountMcp(app, broker, baseUrl) {
   const transports = new Map();
   const mcpServers = new Map();
   // Shared across all connections so peers persist
@@ -387,7 +393,7 @@ function mountMcp(app, broker) {
 
   app.get("/mcp/sse", async (req, res) => {
     const mcp = new McpServer({ name: "ipcb", version: "2.0.0" });
-    registerTools(mcp, broker, sessionPeers);
+    registerTools(mcp, broker, sessionPeers, baseUrl);
 
     const transport = new SSEServerTransport("/mcp/messages", res);
     transports.set(transport.sessionId, transport);

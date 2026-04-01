@@ -37,7 +37,8 @@ function getLanIp() {
 // Build everything
 const broker = new Broker();
 const app = createHttpApi(broker);
-const transports = mountMcp(app, broker);
+const baseUrl = `http://${getLanIp()}:${PORT}`;
+const transports = mountMcp(app, broker, baseUrl);
 
 // Landing page
 app.get("/", (_req, res) => {
