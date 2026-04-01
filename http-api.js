@@ -13,6 +13,17 @@ function createHttpApi(broker) {
     express.json()(req, res, next);
   });
 
+  // ── Reject OAuth discovery — this server requires no authentication ──
+  app.get("/.well-known/oauth-authorization-server", (_req, res) => {
+    res.status(404).json({ error: "OAuth not supported" });
+  });
+  app.get("/.well-known/oauth-protected-resource", (_req, res) => {
+    res.status(404).json({ error: "OAuth not supported" });
+  });
+  app.post("/register", (_req, res) => {
+    res.status(404).json({ error: "OAuth dynamic client registration not supported" });
+  });
+
   // ── Dashboard ──
   app.get("/dashboard", (_req, res) => {
     res.sendFile("dashboard.html", { root: __dirname });
