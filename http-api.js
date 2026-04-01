@@ -82,6 +82,17 @@ function createHttpApi(broker) {
     }
   }
 
+  app.post("/peers/:id/role", (req, res) => {
+    const { role, capabilities } = req.body;
+    if (!role) return res.status(400).json({ ok: false, error: "role is required" });
+    const peer = broker.setRole(req.params.id, role, capabilities);
+    if (peer) {
+      res.json({ ok: true, peer });
+    } else {
+      res.status(404).json({ ok: false, error: "peer not found" });
+    }
+  });
+
   app.delete("/peers/:id", (req, res) => {
     const removed = broker.unregisterPeer(req.params.id);
     if (removed) {

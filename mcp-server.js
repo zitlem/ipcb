@@ -169,6 +169,39 @@ This two-step flow means the user just says "connect to the broker" and you hand
     }
   );
 
+  // ── Tool: set_role ──
+  mcp.tool(
+    "set_role",
+    "Assign or change a peer's role and capabilities. Can target by peer ID or current role name.",
+    {
+      target: z.string().describe("Peer ID or current role name"),
+      role: z.string().describe("New role to assign"),
+      capabilities: z
+        .array(z.string())
+        .optional()
+        .describe("New capabilities (if omitted, keeps existing)"),
+    },
+    async ({ target, role, capabilities }) => {
+      // Resolve target to peer ID
+      let peerId = target;
+      if (!broker.getPeer(target)) {
+        const peers = broker.listPeers().filter((p) => p.role === target);
+        if (peers.length === 0) {
+          return { content: [{ type: "text", text: `No peer found matching: ${target}` }] };
+        }
+        if (peers.length > 1) {
+          return { content: [{ type: "text", text: `Multiple peers with role '${target}'. Use peer ID instead: ${peers.map((p) => p.id).join(", ")}` }] };
+        }
+        peerId = peers[0].id;
+      }
+      const peer = broker.setRole(peerId, role, capabilities);
+      if (!peer) {
+        return { content: [{ type: "text", text: `Peer ${target} not found.` }] };
+      }
+      return { content: [{ type: "text", text: `Updated peer ${peer.id}:\n  Role: ${peer.role}\n  Capabilities: [${peer.capabilities.join(", ")}]` }] };
+    }
+  );
+
   // ── Tool: send_command ──
   mcp.tool(
     "send_command",

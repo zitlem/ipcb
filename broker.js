@@ -78,6 +78,15 @@ class Broker extends EventEmitter {
     return peer;
   }
 
+  setRole(id, role, capabilities) {
+    const peer = this.peers.get(id);
+    if (!peer) return null;
+    peer.role = role;
+    if (capabilities !== undefined) peer.capabilities = capabilities;
+    this.emit("activity", { type: "peer_updated", peer });
+    return peer;
+  }
+
   listPeers() {
     return [...this.peers.values()];
   }
