@@ -405,7 +405,7 @@ function mountMcp(app, broker) {
     const sessionId = req.query.sessionId;
     const transport = transports.get(sessionId);
     if (!transport) {
-      res.status(404).json({ error: "Unknown session" });
+      res.status(400).json({ error: "Unknown or expired session", code: "SESSION_NOT_FOUND" });
       return;
     }
     await transport.handlePostMessage(req, res);

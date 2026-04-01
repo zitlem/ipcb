@@ -14,15 +14,14 @@ function createHttpApi(broker) {
   });
 
   // ── Reject OAuth discovery — this server requires no authentication ──
-  app.get("/.well-known/oauth-authorization-server", (_req, res) => {
-    res.status(404).json({ error: "OAuth not supported" });
-  });
-  app.get("/.well-known/oauth-protected-resource", (_req, res) => {
-    res.status(404).json({ error: "OAuth not supported" });
-  });
-  app.post("/register", (_req, res) => {
-    res.status(404).json({ error: "OAuth dynamic client registration not supported" });
-  });
+  // Must return JSON (not HTML) so MCP clients fail cleanly instead of entering auth flow.
+  // Handles both exact paths and path-suffixed variants (RFC 8414 / MCP spec).
+  const noOAuth = (_req, res) => res.status(404).json({ error: "OAuth not supported" });
+  app.get("/.well-known/oauth-authorization-server", noOAuth);
+  app.get("/.well-known/oauth-authorization-server/*path", noOAuth);
+  app.get("/.well-known/oauth-protected-resource", noOAuth);
+  app.get("/.well-known/oauth-protected-resource/*path", noOAuth);
+  app.post("/register", noOAuth);
 
   // ── Dashboard ──
   app.get("/dashboard", (_req, res) => {
