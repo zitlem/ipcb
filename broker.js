@@ -194,6 +194,39 @@ class Broker extends EventEmitter {
         cmd.result = result;
         cmd.ackedAt = new Date().toISOString();
         this.emit("activity", { type: "command_ack", command: cmd });
+
+        // Send response back to the original sender so they get notified
+        if (cmd.fromId && cmd.fromId !== "human" && cmd.fromId !== "unknown" && this.peers.has(cmd.fromId)) {
+          const response = {
+            id: this._nextCmdId++,
+            from: cmd.targetRole,
+            fromId: cmd.target,
+            target: cmd.fromId,
+            targetRole: cmd.from,
+            action: "command_response",
+            params: { original_command_id: cmd.id, original_action: cmd.action, result },
+            ts: new Date().toISOString(),
+            status: "pending",
+            result: null,
+            ackedAt: null,
+          };
+
+          if (!this.commands.has(cmd.fromId)) this.commands.set(cmd.fromId, []);
+          this.commands.get(cmd.fromId).push(response);
+
+          // Wake any waiters on the original sender
+          const waiters = this.commandWaiters.get(cmd.fromId) || [];
+          if (waiters.length > 0) {
+            const w = waiters.shift();
+            clearTimeout(w.timer);
+            response.delivered = true;
+            w.resolve(response);
+            if (waiters.length === 0) this.commandWaiters.delete(cmd.fromId);
+          }
+
+          this.emit("activity", { type: "command_sent", commands: [response] });
+        }
+
         return cmd;
       }
     }
