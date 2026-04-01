@@ -108,10 +108,29 @@
   /* Feed */
   .feed-entry {
     padding: 5px 14px; font-size: 11px;
-    display: flex; gap: 10px; align-items: baseline;
     border-bottom: 1px solid rgba(48, 54, 61, 0.4);
     animation: fadeIn 0.3s ease;
+    cursor: pointer;
   }
+  .feed-entry .feed-row {
+    display: flex; gap: 10px; align-items: baseline;
+  }
+  .feed-entry:hover { background: rgba(88,166,255,0.05); }
+  .feed-entry .feed-full {
+    display: none;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .feed-entry.expanded .feed-full { display: block; }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
@@ -338,16 +357,16 @@ function handleEvent(event) {
     renderPeers(event.peers || []);
     renderChannels(event.channels);
     renderSignals(event.signals);
-    addFeedEntry({ type: 'snapshot', detail: 'Connected - state loaded' });
+    addFeedEntry({ type: 'snapshot', detail: 'Connected - state loaded', fullData: event });
     refreshCommands();
     return;
   }
   if (event.type === 'peer_join') {
-    addFeedEntry({ type: 'peer_join', detail: `${event.peer.role} (${event.peer.id}) joined` });
+    addFeedEntry({ type: 'peer_join', detail: `${event.peer.role} (${event.peer.id}) joined`, fullData: event.peer });
     refreshState();
   }
   if (event.type === 'peer_leave') {
-    addFeedEntry({ type: 'peer_leave', detail: `${event.peer.role} (${event.peer.id}) left` });
+    addFeedEntry({ type: 'peer_leave', detail: `${event.peer.role} (${event.peer.id}) left`, fullData: event.peer });
     refreshState();
   }
   if (event.type === 'message') {
@@ -356,6 +375,7 @@ function handleEvent(event) {
       type: 'message', from: event.entry.from?.role,
       detail: `${from}#${event.channel}`,
       data: truncate(JSON.stringify(event.entry.data), 80),
+      fullData: event.entry,
     });
     refreshState();
   }
@@ -366,6 +386,7 @@ function handleEvent(event) {
       type: 'signal', from: event.entry.from?.role,
       detail: `${from}${event.name}${woke}`,
       data: event.entry.data ? truncate(JSON.stringify(event.entry.data), 80) : null,
+      fullData: { signal: event.name, ...event.entry },
     });
     refreshState();
   }
@@ -375,6 +396,7 @@ function handleEvent(event) {
         type: 'command',
         detail: `${cmd.from} -> ${cmd.targetRole}: ${cmd.action}`,
         data: cmd.params ? truncate(JSON.stringify(cmd.params), 80) : null,
+        fullData: cmd,
       });
     }
     refreshCommands();
@@ -385,6 +407,7 @@ function handleEvent(event) {
       type: 'cmd_ack',
       detail: `${cmd.targetRole} acked: ${cmd.action}`,
       data: cmd.result ? truncate(JSON.stringify(cmd.result), 80) : null,
+      fullData: cmd,
     });
     refreshCommands();
   }
@@ -471,7 +494,7 @@ function renderCommands(commands) {
   }).join('');
 }
 
-function addFeedEntry({ type, from, detail, data }) {
+function addFeedEntry({ type, from, detail, data, fullData }) {
   activityCount++;
   document.getElementById('activityCount').textContent = activityCount;
   const feed = document.getElementById('activityFeed');
@@ -489,12 +512,18 @@ function addFeedEntry({ type, from, detail, data }) {
     cmd_ack: 'cmd_ack',
   }[type] || type;
 
+  const fullJson = fullData ? JSON.stringify(fullData, null, 2) : (data || '');
+
   div.innerHTML = `
-    <span class="feed-time">${time}</span>
-    <span class="feed-type ${type}">${typeLabel}</span>
-    <span class="feed-detail">${esc(detail)}</span>
-    ${data ? `<span class="feed-data">${esc(data)}</span>` : ''}
+    <div class="feed-row">
+      <span class="feed-time">${time}</span>
+      <span class="feed-type ${type}">${typeLabel}</span>
+      <span class="feed-detail">${esc(detail)}</span>
+      ${data ? `<span class="feed-data">${esc(data)}</span>` : ''}
+    </div>
+    <div class="feed-full">${esc(fullJson)}</div>
   `;
+  div.addEventListener('click', () => div.classList.toggle('expanded'));
   feed.insertBefore(div, feed.firstChild);
   while (feed.children.length > MAX_FEED) feed.removeChild(feed.lastChild);
 }
