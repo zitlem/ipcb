@@ -49,6 +49,12 @@ class Broker extends EventEmitter {
     this.peers.set(id, peer);
     this.commands.set(id, []);
     this.emit("activity", { type: "peer_join", peer });
+
+    // Auto-signal: peer is ready
+    this.signal(`${role}_ready`, { peerId: id, role, capabilities }, id);
+    // Auto-log to activity channel
+    this.send("activity", { event: "peer_joined", role, peerId: id, capabilities }, id);
+
     return peer;
   }
 
@@ -194,6 +200,11 @@ class Broker extends EventEmitter {
         cmd.result = result;
         cmd.ackedAt = new Date().toISOString();
         this.emit("activity", { type: "command_ack", command: cmd });
+
+        // Auto-signal: action done
+        this.signal(`${cmd.action}_done`, { commandId: cmd.id, by: cmd.targetRole, result }, cmd.target);
+        // Auto-log to activity channel
+        this.send("activity", { event: "command_completed", action: cmd.action, by: cmd.targetRole, for: cmd.from, result }, cmd.target);
 
         // Send response back to the original sender so they get notified
         if (cmd.fromId && cmd.fromId !== "human" && cmd.fromId !== "unknown" && this.peers.has(cmd.fromId)) {
