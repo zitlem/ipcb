@@ -4,6 +4,21 @@ A message broker that lets multiple terminals talk to each other. Includes a rea
 
 Works with any process that speaks HTTP or MCP — AI chatbots, scripts, services. Works across terminals on the same machine or across different PCs on a network.
 
+## How is this different from Claude Code's Agent tool?
+
+| | Claude Code Agent | ipcb |
+|---|---|---|
+| **Where it runs** | Same machine, same terminal | Any machine, any terminal, any network |
+| **OS support** | Single OS per session | Cross-platform (Linux, Windows, Mac simultaneously) |
+| **Communication** | In-memory, parent-child process | HTTP/SSE over network |
+| **Orchestration** | Claude manages subagents directly | Peers coordinate via broker, human can intervene via dashboard |
+| **Context** | Shares parent context window | Each peer has its own independent context |
+| **Token usage** | Subagents consume parent tokens | Zero-token waiting via background HTTP long-poll |
+| **Visibility** | Only visible in terminal output | Real-time web dashboard for all activity |
+| **Human control** | Through the parent session | Dashboard lets human send commands to any peer directly |
+
+Use Claude Code agents for single-machine tasks. Use ipcb when you need multiple machines or platforms working together.
+
 ## What it does
 
 - **Peer registry** -- each session registers with a role (e.g. "backend", "linux-client") so everyone knows who's who
@@ -106,8 +121,9 @@ These tools are available when connected via MCP:
 | `my_info()` | Show this session's ID and role |
 | `list_peers()` | See who's online |
 | `send_command(target, action, params)` | Send an order to a peer by role |
-| `wait_for_command(timeout)` | Block until a command arrives |
-| `ack_command(id, result)` | Report command completion |
+| `wait_for_command()` | **Deprecated** -- use background curl instead (zero tokens) |
+| `ack_command(id, result)` | Report command completion (auto-notifies sender) |
+| `set_role(target, role, capabilities)` | Change a peer's role and capabilities |
 | `send_message(channel, message)` | Post to a message channel |
 | `read_messages(channel, since_id)` | Read from a channel |
 | `signal(name, data)` | Emit a named event |
